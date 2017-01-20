@@ -1,0 +1,26 @@
+# --table-start--
+dataClass=masstransit.domain.Stop
+tableName=Stops
+# --table-fields-start--
+# --field-start--
+fieldName=id
+id=true
+# --field-end--
+# --field-start--
+fieldName=lat
+# --field-end--
+# --field-start--
+fieldName=lon
+# --field-end--
+# --field-start--
+fieldName=name
+# --field-end--
+# --field-start--
+fieldName=code
+# --field-end--
+# --field-start--
+fieldName=routes
+# --field-end--
+# --table-fields-end--
+# --table-end--
+#################################

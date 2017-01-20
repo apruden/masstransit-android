@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">MassTransit</string>
+    <string name="title_activity_maps">Map</string>
+    <string name="map_list_header_txt">Header</string>
+    <string name="map_geo_search_input_hint">Type a stop name, code or bus number ...</string>
+    <string name="title_activity_main">MassTransit</string>
+
+    <string name="navigation_drawer_open">Open navigation drawer</string>
+    <string name="navigation_drawer_close">Close navigation drawer</string>
+
+    <string name="action_settings">Settings</string>
+</resources>
