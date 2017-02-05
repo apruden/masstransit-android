@@ -11,7 +11,6 @@ import android.widget.ProgressBar
 
 class DelayAutoCompleteTextView(context: Context, attrs: AttributeSet) :
         AutoCompleteTextView(context, attrs) {
-
     private var mAutoCompleteDelay = DEFAULT_AUTOCOMPLETE_DELAY
     private var mLoadingIndicator: ProgressBar? = null
 
@@ -30,23 +29,20 @@ class DelayAutoCompleteTextView(context: Context, attrs: AttributeSet) :
     }
 
     override fun performFiltering(text: CharSequence, keyCode: Int) {
-        if (mLoadingIndicator != null) {
+        if (mLoadingIndicator != null)
             mLoadingIndicator!!.visibility = View.VISIBLE
-        }
         mHandler.removeMessages(MESSAGE_TEXT_CHANGED)
         mHandler.sendMessageDelayed(
                 mHandler.obtainMessage(MESSAGE_TEXT_CHANGED, text), mAutoCompleteDelay.toLong())
     }
 
     override fun onFilterComplete(count: Int) {
-        if (mLoadingIndicator != null) {
+        if (mLoadingIndicator != null)
             mLoadingIndicator!!.visibility = View.GONE
-        }
         super.onFilterComplete(count)
     }
 
     companion object {
-
         private val MESSAGE_TEXT_CHANGED = 100
         private val DEFAULT_AUTOCOMPLETE_DELAY = 750
     }

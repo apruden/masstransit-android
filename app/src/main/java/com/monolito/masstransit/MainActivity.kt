@@ -2,27 +2,19 @@ package com.monolito.masstransit
 
 import android.app.ProgressDialog
 import android.content.Context
+import android.graphics.Typeface
 import android.os.AsyncTask
 import android.os.Bundle
-import android.support.design.widget.FloatingActionButton
-import android.support.design.widget.Snackbar
 import android.support.multidex.MultiDex
-import android.text.Editable
-import android.text.TextWatcher
 import android.util.Log
-import android.view.View
-import android.support.design.widget.NavigationView
 import android.support.v4.view.GravityCompat
 import android.support.v4.widget.DrawerLayout
-import android.support.v7.app.ActionBarDrawerToggle
 import android.support.v7.app.AppCompatActivity
-import android.support.v7.widget.Toolbar
-import android.view.Menu
-import android.view.MenuItem
+import android.support.v7.widget.LinearLayoutManager
+import android.support.v7.widget.RecyclerView
+import android.view.*
 import android.view.inputmethod.InputMethodManager
-import android.widget.AdapterView
-import android.widget.ImageView
-import android.widget.TextView
+import android.widget.*
 
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
@@ -33,11 +25,8 @@ import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.TileOverlayOptions
 import com.j256.ormlite.android.apptools.OpenHelperManager
 import com.j256.ormlite.dao.Dao
-import com.monolito.masstransit.domain.Calendar
-import com.monolito.masstransit.domain.Route
-import com.monolito.masstransit.domain.Schedule
-import com.monolito.masstransit.domain.Shape
-import com.monolito.masstransit.domain.Stop
+import com.lapism.searchview.SearchView
+import com.monolito.masstransit.domain.*
 
 import org.joda.time.LocalDate
 
@@ -56,59 +45,193 @@ import retrofit2.converter.jackson.JacksonConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Query
 
+class CustomExpandableListAdapter(val context: Context,
+                                  val expandableListTitle: List<String>,
+                                  val expandableListDetail: HashMap<String, List<String>>):
+        BaseExpandableListAdapter() {
+    override fun getChild(listPosition: Int, expandedListPosition: Int): Any {
+        return this.expandableListDetail[
+                this.expandableListTitle[listPosition]]!![expandedListPosition]
+    }
+
+    override fun getChildId(listPosition: Int, expandedListPosition: Int): Long {
+        return expandedListPosition.toLong()
+    }
+
+    override fun getChildView(listPosition: Int, expandedListPosition: Int,
+                             isLastChild: Boolean, convertViewIn: View?, parent: ViewGroup): View? {
+        var convertView = convertViewIn
+
+        if (convertView == null) {
+            val layoutInflater =
+                    this.context.getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
+            convertView = layoutInflater.inflate(R.layout.list_item, null)
+        }
+
+        val expandedListText = getChild(listPosition, expandedListPosition)
+        val expandedListTextView = convertView!!.findViewById(R.id.expandedListItem) as TextView
+        expandedListTextView.text = expandedListText as String
+
+        return convertView
+    }
+
+    override fun getChildrenCount(listPosition: Int): Int =
+            this.expandableListDetail[this.expandableListTitle[listPosition]]!!.size
+
+    override fun getGroup(listPosition: Int): Any {
+        return this.expandableListTitle[listPosition]
+    }
+
+    override fun getGroupCount(): Int {
+        return this.expandableListTitle.size
+    }
+
+    override fun getGroupId(listPosition: Int): Long {
+        return listPosition.toLong()
+    }
+
+    override fun getGroupView(listPosition: Int, isExpanded: Boolean,
+                             convertViewIn: View?, parent: ViewGroup) : View? {
+        var convertView = convertViewIn
+        val listTitle = getGroup(listPosition) as String
+
+        if (convertView == null) {
+            val layoutInflater =
+                    this.context.getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
+            convertView = layoutInflater.inflate(R.layout.list_group, null)
+        }
+
+        val listTitleTextView = convertView!!.findViewById(R.id.listTitle) as TextView
+        listTitleTextView.setTypeface(null, Typeface.BOLD)
+        listTitleTextView.text = listTitle
+        return convertView
+    }
+
+    override fun hasStableIds(): Boolean {
+        return false
+    }
+
+    override fun isChildSelectable(listPosition: Int, expandedListPosition: Int): Boolean {
+        return true
+    }
+}
+
+
+class MyAdapter(val mDataset: Array<String>) : RecyclerView.Adapter<MyAdapter.ViewHolder>() {
+    override fun onCreateViewHolder(parent: ViewGroup?, viewType: Int): ViewHolder {
+        val v: View = LayoutInflater.from(parent!!.context)
+                .inflate(R.layout.my_text_view, parent, false)
+        return ViewHolder(v)
+    }
+
+    override fun getItemCount(): Int {
+        return mDataset.size
+    }
+
+    override fun onBindViewHolder(holder: ViewHolder?, position: Int) {
+        holder!!.mTextView.text = mDataset[position]
+    }
+
+    inner class ViewHolder(v: View) : RecyclerView.ViewHolder(v) {
+        val mTextView: TextView = v.findViewById(R.id.expandedListItem) as TextView
+    }
+}
 
 class MainActivity : AppCompatActivity(),
-        NavigationView.OnNavigationItemSelectedListener,
         OnMapReadyCallback {
-
     private var map: GoogleMap? = null
     private var autocomplete: DelayAutoCompleteTextView? = null
-    private var clearAutocomplete: ImageView? = null
+    //private var clearAutocomplete: ImageView? = null
     private var progress: ProgressDialog? = null
     private val timer = Timer()
     private val markers = HashMap<LatLng, Stop>()
 
     lateinit var helper: DatabaseHelper
     private var drawerLayout: DrawerLayout? = null
-    private var navigationView: NavigationView? = null
-    private var navTextHeader: TextView? = null
+    //private var navigationView: NavigationView? = null
+    //private var navTextHeader: TextView? = null
+    private var expandableListView: ExpandableListView? = null
 
     override fun onDestroy() {
         super.onDestroy()
         OpenHelperManager.releaseHelper()
     }
 
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        return super.onCreateOptionsMenu(menu)
+    }
+
+    private var mRecyclerView: RecyclerView? = null
+    private var mAdapter: RecyclerView.Adapter<*>? = null
+    private var mLayoutManager: RecyclerView.LayoutManager? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         helper = OpenHelperManager.getHelper(this, DatabaseHelper::class.java)
         setContentView(R.layout.activity_main)
-        val toolbar = findViewById(R.id.toolbar) as Toolbar?
+        //val toolbar = findViewById(R.id.toolbar) as Toolbar?
         drawerLayout = findViewById(R.id.drawer_layout) as DrawerLayout?
-        setSupportActionBar(toolbar)
 
-        val fab = findViewById(R.id.fab) as FloatingActionButton?
+
+        mRecyclerView = findViewById(R.id.my_recycler_view) as RecyclerView?
+        mRecyclerView!!.setHasFixedSize(true)
+        mLayoutManager = LinearLayoutManager(this)
+        mRecyclerView!!.setLayoutManager(mLayoutManager)
+        mAdapter = MyAdapter(arrayOf("test", "tata", "toto"))
+        mRecyclerView!!.setAdapter(mAdapter)
+
+
+        //setSupportActionBar(toolbar)
+
+        /*val fab = findViewById(R.id.fab) as FloatingActionButton?
         fab!!.setOnClickListener { view ->
             Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
                     .setAction("Action", null).show()
-        }
+        }*/
 
-        val drawer = findViewById(R.id.drawer_layout) as DrawerLayout?
-        val toggle = ActionBarDrawerToggle(
-                this, drawer, toolbar, R.string.navigation_drawer_open,
+        //val drawer = findViewById(R.id.drawer_layout) as DrawerLayout?
+        //drawer!!.addDrawerListener()
+
+        /*val toggle = ActionBarDrawerToggle(
+                this, drawer, toolbar,
+                R.string.navigation_drawer_open,
                 R.string.navigation_drawer_close)
         drawer!!.addDrawerListener(toggle)
+        toggle.syncState()*/
 
-        toggle.syncState()
-
-        navigationView = findViewById(R.id.nav_view) as NavigationView?
+        /*navigationView = findViewById(R.id.nav_view) as NavigationView?
         navigationView!!.setNavigationItemSelectedListener(this)
         navTextHeader =
-                navigationView!!.getHeaderView(0).findViewById(R.id.navTextHeader) as TextView
+                navigationView!!.getHeaderView(0).findViewById(R.id.navTextHeader) as TextView*/
 
         val mapFragment = supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
 
-        clearAutocomplete = findViewById(R.id.geo_autocomplete_clear) as ImageView?
+        val mSearchView = findViewById(R.id.searchView) as SearchView
+        val searchAdapter = AutoCompleteAdapter(context)
+        searchAdapter.addOnItemClickListener(object : AutoCompleteAdapter.OnItemClickListener{
+            override fun onItemClick(view: View, position: Int, s: Searchable?) {
+                val textView = view.findViewById(R.id.textView_item_text) as TextView
+                val result = s as Stop
+                moveMap(result.lat, result.lon)
+                mSearchView.close(false)
+            }
+        })
+
+        mSearchView.adapter = searchAdapter
+        mSearchView.setOnOpenCloseListener(object: SearchView.OnOpenCloseListener {
+            override fun onOpen(): Boolean {
+                return true
+            }
+
+            override fun onClose(): Boolean {
+                return true
+            }
+        })
+
+        mSearchView.setOnMenuClickListener { drawerLayout!!.openDrawer(GravityCompat.START) }
+
+        /*clearAutocomplete = findViewById(R.id.geo_autocomplete_clear) as ImageView?
         autocomplete = findViewById(R.id.geo_autocomplete) as DelayAutoCompleteTextView?
         autocomplete!!.setAdapter(AutoCompleteAdapter(this))
         autocomplete!!.onItemClickListener =
@@ -125,14 +248,33 @@ class MainActivity : AppCompatActivity(),
             override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) {}
 
             override fun afterTextChanged(s: Editable) {
-                if (s.length > 0)
+                if (s.isNotEmpty())
                     clearAutocomplete!!.visibility = View.VISIBLE
                 else
                     clearAutocomplete!!.visibility = View.GONE
             }
         })
 
-        clearAutocomplete!!.setOnClickListener { autocomplete!!.setText("") }
+        clearAutocomplete!!.setOnClickListener { autocomplete!!.setText("") }*/
+
+
+        expandableListView = findViewById(R.id.expandableListView) as ExpandableListView?
+        val expandableListDetail = hashMapOf<String, List<String>>()
+        val expandableListTitle = expandableListDetail.keys.toList()
+        val expandableListAdapter = CustomExpandableListAdapter(this, expandableListTitle, expandableListDetail)
+        expandableListView!!.setAdapter(expandableListAdapter)
+        expandableListView!!.setOnGroupExpandListener { groupPosition ->
+            //Toast.makeText(applicationContext, expandableListTitle.get(groupPosition) + " List Expanded.", Toast.LENGTH_SHORT).show()
+        }
+
+        expandableListView!!.setOnGroupCollapseListener { groupPosition ->
+            //Toast.makeText(applicationContext, expandableListTitle.get(groupPosition) + " List Collapsed.", Toast.LENGTH_SHORT).show()
+        }
+
+        expandableListView!!.setOnChildClickListener { parent, v, groupPosition, childPosition, id ->
+            //Toast.makeText(applicationContext, expandableListTitle.get(groupPosition) + " -> " + expandableListDetail.get(expandableListTitle.get(groupPosition))!!.get(childPosition), Toast.LENGTH_SHORT).show()
+            false
+        }
     }
 
     override fun onBackPressed() {
@@ -144,11 +286,14 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
+    /*
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main, menu)
         return true
     }
+    */
 
+    /*
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         // Handle action bar item clicks here. The action bar will
         // automatically handle clicks on the Home/Up button, so long
@@ -162,16 +307,7 @@ class MainActivity : AppCompatActivity(),
 
         return super.onOptionsItemSelected(item)
     }
-
-    override fun onNavigationItemSelected(item: MenuItem): Boolean {
-        // Handle navigation view item clicks here.
-        val id = item.itemId
-
-        //DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
-        //drawer.closeDrawer(GravityCompat.START);
-
-        return true
-    }
+    */
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
@@ -195,7 +331,7 @@ class MainActivity : AppCompatActivity(),
         map = googleMap
         map!!.uiSettings.isMapToolbarEnabled = false
         map!!.uiSettings.isZoomControlsEnabled = false
-        map!!.mapType = GoogleMap.MAP_TYPE_NONE
+        map!!.mapType = GoogleMap.MAP_TYPE_NORMAL
         map!!.addTileOverlay(TileOverlayOptions().tileProvider(CustomMapTileProvider(this)))
         map!!.setOnMarkerClickListener { marker ->
             /* Intent intent = new Intent(MainActivity.this, StopRoutesActivity.class);
@@ -236,19 +372,20 @@ class MainActivity : AppCompatActivity(),
     }
 
     private fun openDrawer(stop: Stop) {
-        //http://stackoverflow.com/questions/32419446/adding-expandablelistview-to-navigationview
-        navTextHeader!!.text = stop.getLabel()
+        //navTextHeader!!.text = stop.getLabel()
         drawerLayout!!.openDrawer(GravityCompat.START)
         LoadSchedule().execute(stop)
     }
 
-    private inner class RouteSchedule internal constructor(internal val route: String, internal val schedule: List<String>)
+    private inner class RouteSchedule internal constructor(
+            internal val route: String, internal val schedule: List<String>)
 
     private inner class LoadSchedule : AsyncTask<Stop, Void, List<RouteSchedule>>() {
 
         override fun doInBackground(vararg stops: Stop): List<RouteSchedule> {
             val (id, lat, lon, name, code, routes1) = stops[0]
-            val routes = routes1.split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
+
+            val routes = routes1.split(",".toRegex()).dropLastWhile(String::isEmpty).toTypedArray()
             val routeSchedules = ArrayList<RouteSchedule>()
 
             try {
@@ -281,12 +418,12 @@ class MainActivity : AppCompatActivity(),
 
                     for (route in routes) {
                         try {
-                            schedules = service.listSchedules(id, route).execute().body()
+                            val tmp = service.listSchedules(id, route).execute()
+                            schedules = tmp.body()
                             insertEntities(schedules, helper.scheduleDao)
                         } catch (e: IOException) {
                             e.printStackTrace()
                         }
-
                     }
 
                     schedules = helper.scheduleDao.queryBuilder()
@@ -300,16 +437,14 @@ class MainActivity : AppCompatActivity(),
                 val now = String.format("%02d:%02d:00", c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE))
 
                 for ((id1, stop, route, service, code1, times1) in schedules) {
-                    val times = Arrays.asList(*times1.split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray())
+                    val times = Arrays.asList(*times1.split(",".toRegex())
+                            .dropLastWhile(String::isEmpty)
+                            .toTypedArray())
                     val res = ArrayList<String>()
-
-                    for (t in times) {
-                        if (t.compareTo(now) > 0 && res.size < 10) res.add(t)
-                    }
-
+                    times.filter { it > now }
+                            .forEach { res.add(it.substringBeforeLast(":")) }
                     Collections.sort(res)
-
-                    routeSchedules.add(RouteSchedule(code1, res))
+                    routeSchedules.add(RouteSchedule(code1, res.take(10)))
                 }
             } catch (e: SQLException) {
                 e.printStackTrace()
@@ -321,17 +456,20 @@ class MainActivity : AppCompatActivity(),
         override fun onPostExecute(res: List<RouteSchedule>?) {
             if (res == null) return
 
-            val men = navigationView!!.menu
-            men.clear()
+            val data = hashMapOf<String, List<String>>()
+            //val men = navigationView!!.menu
+            //men.clear()
 
             for (rs in res!!) {
-                val sm = men.addSubMenu(rs.route)
+                //val sm = men.addSubMenu(rs.route)
                 //MenuItem it = sm.add("Favorite");
                 //it.setIcon(R.drawable.ic_menu_camera);
-                for (time in rs.schedule) {
-                    sm.add(time)
-                }
+                data[rs.route] = rs.schedule
             }
+
+            val expandableListTitle = data.keys.toList()
+            val expandableListAdapter = CustomExpandableListAdapter(applicationContext, expandableListTitle, data)
+            expandableListView!!.setAdapter(expandableListAdapter)
         }
     }
 
@@ -401,7 +539,8 @@ class MainActivity : AppCompatActivity(),
         fun listCalendars(): Call<List<Calendar>>
 
         @GET("schedules")
-        fun listSchedules(@Query("stop") stop: String, @Query("code") code: String): Call<List<Schedule>>
+        fun listSchedules(
+                @Query("stop") stop: String, @Query("code") code: String): Call<List<Schedule>>
 
         @GET("shapes")
         fun listShapes(): Call<List<Shape>>
@@ -441,6 +580,7 @@ class MainActivity : AppCompatActivity(),
                 val service = retrofit.create(MassTransitService::class.java)
                 val stops = service.listStops().execute().body()
                 val dao = helper.stopDao
+
                 insertEntities(stops, dao)
 
                 val calendars = service.listCalendars().execute().body()
